@@ -36,6 +36,10 @@ import { BadgeChip } from './src/components/BadgeChip';
 import { ScoreCard } from './src/components/ScoreCard';
 import { ScenarioCard } from './src/components/ScenarioCard';
 import type { ScenarioConfig } from './src/types/scenario';
+import type { SavedPlan } from './src/types/savedPlan';
+import * as Clipboard from 'expo-clipboard';
+import { addSavedPlan, deleteSavedPlan, loadSavedPlans } from './src/services/storage';
+import { SavedPlansCard } from './src/components/SavedPlansCard';
 
 export default function App() {
   const COACH_NAME = 'Marketing Coach';
@@ -106,6 +110,8 @@ export default function App() {
   const liveConfidence = useMemo(() => calculateConfidence(liveScore), [liveScore]);
   const [scenario, setScenario] = useState<ScenarioConfig>({ budgetDelta: 0, addChannel: '' });
   const baseBudgetValue = useMemo(() => parseBudgetValue(answers.budget), [answers.budget]);
+  const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
 
   const startConversation = useCallback(() => {
     setQuestionIndex(0);
@@ -135,6 +141,19 @@ export default function App() {
     // Initialize the first assistant message once.
     startConversation();
   }, [startConversation]);
+
+  useEffect(() => {
+    // Load saved plans once on mount (AsyncStorage works on web too).
+    loadSavedPlans()
+      .then(setSavedPlans)
+      .catch(() => setSavedPlans([]));
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 1800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     if (!isComplete) return;
@@ -383,6 +402,52 @@ export default function App() {
                   const scenarioInsights = generateMarketingInsights(scenarioAnswers);
                   return (
                     <>
+                      <View style={styles.actionsRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={async () => {
+                            const title = `${answers.companyName || 'Marketing plan'} — ${new Date().toLocaleDateString()}`;
+                            const plan: SavedPlan = {
+                              id: makeId('plan'),
+                              createdAt: Date.now(),
+                              title,
+                              answers,
+                              scenario,
+                              insights: scenarioInsights,
+                            };
+                            const next = await addSavedPlan(plan);
+                            setSavedPlans(next);
+                            setToast('Saved plan');
+                          }}
+                          style={({ pressed }) => [styles.actionBtn, pressed ? styles.actionBtnPressed : null]}
+                        >
+                          <Ionicons name="bookmark-outline" size={16} color={colors.text} />
+                          <Text style={styles.actionBtnText}>Save</Text>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={async () => {
+                            const summary = [
+                              `Marketing plan summary`,
+                              `Company: ${answers.companyName || '—'}`,
+                              `Product/service: ${answers.productOrService || '—'}`,
+                              `Score: ${scenarioInsights.score}/100`,
+                              `Confidence: ${calculateConfidence(scenarioInsights.score)}%`,
+                              ``,
+                              `Top tips:`,
+                              ...scenarioInsights.tips.slice(0, 5).map((t, i) => `${i + 1}. ${t}`),
+                            ].join('\n');
+                            await Clipboard.setStringAsync(summary);
+                            setToast('Copied summary');
+                          }}
+                          style={({ pressed }) => [styles.actionBtn, pressed ? styles.actionBtnPressed : null]}
+                        >
+                          <Ionicons name="share-outline" size={16} color={colors.text} />
+                          <Text style={styles.actionBtnText}>Copy summary</Text>
+                        </Pressable>
+                      </View>
+
                       <ScoreCard
                         score={scenarioInsights.score}
                         confidence={calculateConfidence(scenarioInsights.score)}
@@ -409,6 +474,23 @@ export default function App() {
                   const scenarioInsights = generateMarketingInsights(scenarioAnswers);
                   return <TipsList tips={scenarioInsights.tips} />;
                 })()}
+
+                <View style={{ height: spacing.lg }} />
+                <SavedPlansCard
+                  plans={savedPlans}
+                  onLoad={(p) => {
+                    setAnswers(p.answers);
+                    setScenario(p.scenario);
+                    setInsightsState({ status: 'ready', data: p.insights });
+                    setQuestionIndex(QUESTIONS.length);
+                    setToast('Loaded plan');
+                  }}
+                  onDelete={async (p) => {
+                    const next = await deleteSavedPlan(p.id);
+                    setSavedPlans(next);
+                    setToast('Deleted');
+                  }}
+                />
               </>
             )}
           </View>
@@ -434,6 +516,14 @@ export default function App() {
 
         <StatusBar style="dark" />
       </LinearGradient>
+
+      {toast ? (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -522,6 +612,49 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     color: colors.mutedText,
     fontWeight: '600',
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  actionBtnPressed: {
+    opacity: 0.85,
+  },
+  actionBtnText: {
+    fontSize: typography.small,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  toastWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 86,
+    alignItems: 'center',
+  },
+  toast: {
+    backgroundColor: 'rgba(17, 24, 39, 0.92)',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: typography.small,
+    fontWeight: '800',
   },
   results: {
     marginTop: spacing.sm,
