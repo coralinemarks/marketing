@@ -5,6 +5,11 @@ export type ChatMessage = {
   role: Role;
   text: string;
   createdAt: number;
+  /**
+   * Used for special chat items like typing indicators.
+   * Keeps rendering simple without separate message arrays.
+   */
+  kind?: 'message' | 'typing';
 };
 
 export type MarketingAnswers = {

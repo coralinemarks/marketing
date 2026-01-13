@@ -9,6 +9,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { ChatBubble } from './src/components/ChatBubble';
 import { ChatComposer } from './src/components/ChatComposer';
 import { CompanyOverviewCard } from './src/components/CompanyOverviewCard';
@@ -16,12 +18,15 @@ import { Card } from './src/components/Card';
 import { LineChart } from './src/components/LineChart';
 import { SectionHeader } from './src/components/SectionHeader';
 import { TipsList } from './src/components/TipsList';
+import { TypingIndicator } from './src/components/TypingIndicator';
 import { colors, radii, spacing, typography } from './src/constants/theme';
 import type { ChatMessage, MarketingAnswers, MarketingInsights } from './src/types/marketing';
 import { makeId } from './src/utils/id';
 import { generateMarketingInsights } from './src/utils/marketingInsights';
 
 export default function App() {
+  const COACH_NAME = 'Marketing Coach';
+
   const QUESTIONS: Array<{
     key: keyof MarketingAnswers;
     prompt: string;
@@ -30,32 +35,32 @@ export default function App() {
     () => [
       {
         key: 'companyName',
-        prompt: `Hi! I’ll help you analyze and improve your marketing plan.\n\nWhat’s your company name?`,
+        prompt: `Hey! I’m your ${COACH_NAME}.\n\nLet’s turn your plan into something you can actually execute.\n\nFirst up: what’s your company name?`,
         placeholder: 'Company name',
       },
       {
         key: 'productOrService',
-        prompt: `Great — what product or service do you sell?`,
+        prompt: `Nice. What product or service do you sell?`,
         placeholder: 'e.g., meal kit delivery for busy families',
       },
       {
         key: 'targetAudience',
-        prompt: `Who is your target audience?\n\nTry to be specific (role/title, industry, location, pain point).`,
+        prompt: `Who exactly are we trying to win?\n\nGive me the audience (role/title, industry, location, pain point).`,
         placeholder: 'e.g., founders of small SaaS companies in the US',
       },
       {
         key: 'channels',
-        prompt: `Which marketing channels will you use?\n\nList what you plan to run (comma-separated).`,
+        prompt: `Where will people discover you?\n\nList the channels you’ll use (comma-separated).`,
         placeholder: 'e.g., SEO, Instagram, partnerships, email',
       },
       {
         key: 'budget',
-        prompt: `What’s your approximate monthly marketing budget?\n\nYou can type a number or include currency.`,
+        prompt: `Alright—what’s the monthly marketing budget?\n\nRough is fine.`,
         placeholder: 'e.g., $500/month',
       },
       {
         key: 'goals',
-        prompt: `What are your goals for the next 3 months?\n\nInclude a metric + timeframe if you can.`,
+        prompt: `Last one: what’s the goal for the next 3 months?\n\nBonus points for a metric + deadline.`,
         placeholder: 'e.g., 200 trial signups by end of March',
       },
     ],
@@ -83,6 +88,7 @@ export default function App() {
   >({ status: 'locked' });
 
   const isComplete = questionIndex >= QUESTIONS.length;
+  const [isCoachTyping, setIsCoachTyping] = useState(false);
 
   const startConversation = useCallback(() => {
     setQuestionIndex(0);
@@ -95,12 +101,14 @@ export default function App() {
       goals: '',
     });
     setInsightsState({ status: 'locked' });
+    setIsCoachTyping(false);
     setMessages([
       {
         id: makeId('msg'),
         role: 'assistant',
         text: QUESTIONS[0].prompt,
         createdAt: Date.now(),
+        kind: 'message',
       },
     ]);
   }, [QUESTIONS]);
@@ -132,6 +140,42 @@ export default function App() {
 
   const current = QUESTIONS[questionIndex];
 
+  const progress = useMemo(() => {
+    const total = QUESTIONS.length;
+    const answered = Math.min(questionIndex, total);
+    return { total, answered, pct: total === 0 ? 0 : answered / total };
+  }, [QUESTIONS.length, questionIndex]);
+
+  const makeCoachReaction = useCallback(
+    (key: keyof MarketingAnswers, text: string) => {
+      const t = text.trim();
+      if (!t) return `I didn’t catch that—mind trying again?`;
+      switch (key) {
+        case 'companyName':
+          return `Got it. ${t}—sounds like we’re building something real.`;
+        case 'productOrService':
+          return `Nice. I’m already thinking about positioning for “${t}”.`;
+        case 'targetAudience':
+          return t.length >= 25
+            ? `Solid—specific audiences are easier to win.`
+            : `Okay—let’s sharpen that later. Specificity = cheaper growth.`;
+        case 'channels': {
+          const c = t.split(/[,\n]/g).map((p) => p.trim()).filter(Boolean).length;
+          if (c <= 1) return `One channel can work, but it’s fragile. We’ll add a backup lever.`;
+          if (c >= 4) return `Ambitious mix—let’s focus so execution stays consistent.`;
+          return `Good channel mix. Enough to learn, not too much to juggle.`;
+        }
+        case 'budget':
+          return `Perfect—budget tells me how aggressive we can be with testing.`;
+        case 'goals':
+          return `Love it. Goals give us a scoreboard—now we can play to win.`;
+        default:
+          return `Noted.`;
+      }
+    },
+    []
+  );
+
   const composer = useMemo(() => {
     if (insightsState.status === 'loading') {
       return { placeholder: 'Analyzing…', disabled: true };
@@ -139,8 +183,11 @@ export default function App() {
     if (isComplete) {
       return { placeholder: 'Done! Tap “Start over” to run again.', disabled: true };
     }
+    if (isCoachTyping) {
+      return { placeholder: `${COACH_NAME} is thinking…`, disabled: true };
+    }
     return { placeholder: current?.placeholder ?? 'Type your answer…', disabled: false };
-  }, [current, insightsState.status, isComplete]);
+  }, [COACH_NAME, current, insightsState.status, isComplete, isCoachTyping]);
 
   const onSend = useCallback(
     (text: string) => {
@@ -149,36 +196,54 @@ export default function App() {
       // Append the user's message.
       setMessages((m) => [
         ...m,
-        { id: makeId('msg'), role: 'user', text, createdAt: Date.now() },
+        { id: makeId('msg'), role: 'user', text, createdAt: Date.now(), kind: 'message' },
       ]);
 
       // Save answer.
       setAnswers((a) => ({ ...a, [current.key]: text }));
 
-      // Move to next question.
-      const nextIndex = questionIndex + 1;
-      setQuestionIndex(nextIndex);
+      setIsCoachTyping(true);
 
-      // Append next assistant prompt (or completion message).
+      const nextIndex = questionIndex + 1;
       const next = QUESTIONS[nextIndex];
-      setMessages((m) => [
-        ...m,
-        {
-          id: makeId('msg'),
-          role: 'assistant',
-          text: next
-            ? next.prompt
-            : `Thanks — that’s everything I need.\n\nScroll down for your marketing success projection and a set of actionable improvements.`,
-          createdAt: Date.now(),
-        },
-      ]);
+      const reaction = makeCoachReaction(current.key, text);
+
+      // Small delay to simulate a human-ish coach pacing.
+      setTimeout(() => {
+        setMessages((m) => [
+          ...m,
+          { id: makeId('msg'), role: 'assistant', text: reaction, createdAt: Date.now(), kind: 'message' },
+        ]);
+
+        setTimeout(() => {
+          setIsCoachTyping(false);
+          setQuestionIndex(nextIndex);
+          setMessages((m) => [
+            ...m,
+            {
+              id: makeId('msg'),
+              role: 'assistant',
+              text: next
+                ? next.prompt
+                : `Alright—strategy captured.\n\nScroll down for your score, projection, and the moves I’d make next.`,
+              createdAt: Date.now(),
+              kind: 'message',
+            },
+          ]);
+        }, 350);
+      }, 550);
     },
-    [QUESTIONS, current, questionIndex]
+    [QUESTIONS, current, makeCoachReaction, questionIndex]
   );
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <LinearGradient
+        colors={[colors.background, colors.background2]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.container}
+      >
         <ScrollView
           ref={(r) => {
             scrollRef.current = r;
@@ -188,10 +253,24 @@ export default function App() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.title}>Marketing Plan Analysis</Text>
+            <View style={styles.headerRow}>
+              <View style={styles.headerIcon}>
+                <Ionicons name="sparkles" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.title}>Marketing Coach</Text>
+            </View>
             <Text style={styles.subtitle}>
-              Answer a few guided questions to get a projection and improvement tips.
+              A playful, practical way to turn your inputs into a score, a timeline, and next steps.
             </Text>
+
+            <View style={styles.progressWrap}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round(progress.pct * 100)}%` }]} />
+              </View>
+              <Text style={styles.progressText}>
+                {progress.answered}/{progress.total} answered
+              </Text>
+            </View>
           </View>
 
           <CompanyOverviewCard
@@ -202,9 +281,14 @@ export default function App() {
           <Card style={styles.chatCard}>
             <Text style={styles.chatTitle}>Chat</Text>
             <View style={styles.chatTranscript}>
-              {messages.map((m) => (
-                <ChatBubble key={m.id} role={m.role} text={m.text} />
-              ))}
+              {messages.map((m) =>
+                m.kind === 'typing' ? (
+                  <TypingIndicator key={m.id} label={`${COACH_NAME} is thinking`} />
+                ) : (
+                  <ChatBubble key={m.id} role={m.role} text={m.text} />
+                )
+              )}
+              {isCoachTyping ? <TypingIndicator label="Analyzing your strategy" /> : null}
             </View>
           </Card>
 
@@ -273,7 +357,7 @@ export default function App() {
         />
 
         <StatusBar style="dark" />
-      </View>
+      </LinearGradient>
     </SafeAreaView>
   );
 }
@@ -297,6 +381,21 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: spacing.lg,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#C7DAFF',
+  },
   title: {
     fontSize: typography.title,
     fontWeight: '800',
@@ -319,6 +418,28 @@ const styles = StyleSheet.create({
   },
   chatTranscript: {
     gap: 0,
+  },
+  progressWrap: {
+    marginTop: spacing.md,
+  },
+  progressTrack: {
+    height: 10,
+    backgroundColor: '#EFE7DB',
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  progressFill: {
+    height: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+  },
+  progressText: {
+    marginTop: spacing.xs,
+    fontSize: typography.small,
+    color: colors.mutedText,
+    fontWeight: '600',
   },
   results: {
     marginTop: spacing.sm,
