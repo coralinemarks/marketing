@@ -1,8 +1,8 @@
-# Marketing Coach (Marketing Plan Insight App)
+# Marketing Intelligence Dashboard (Expo + React Native)
 
-Cross-platform (iOS, Android, Web) app built with **Expo + React Native** that feels like a **conversational marketing coach**.
+Cross-platform (iOS, Android, Web) **marketing intelligence & profit forecast** app built with **Expo + React Native**.
 
-Instead of a static form, you get a guided chat experience with live scoring, animated data, and a “what‑if” sandbox to explore improvements.
+It starts with a conversational coach to capture the basics, then expands into a **business intelligence dashboard**: market sizing (TAM/SAM), budget allocation, growth projections, and deterministic revenue/profit/ROI forecasting.
 
 ## What you get
 
@@ -10,6 +10,11 @@ Instead of a static form, you get a guided chat experience with live scoring, an
 - **Gamification**: live **Marketing Score (0–100)**, confidence meter, progress bar, and badges
 - **Animated chart**: success projection line animates in + annotated moments in the timeline
 - **What‑if mode**: tweak budget/add a channel and see score, chart, and tips update in real time
+- **Marketing Intelligence Dashboard**:
+  - Market size & growth: **TAM**, **SAM**, **YoY growth** with bar + radial visuals and tooltips
+  - Budget input & allocation: monthly budget + channel mix (paid/social/email/content) with a pie chart + sliders
+  - Profit & ROI forecast: annual spend, revenue, profit, ROI, market share, confidence, and animated projections
+  - Insight cards: explainable recommendations with impact estimates
 - **Save + share**: save plans locally, load/delete them, and copy a shareable text summary
 - **Expo Web + Vercel ready**: static export + `vercel.json`
 
@@ -94,9 +99,10 @@ See `src/services/api.ts` for the suggested pattern.
 ```text
 src/
   components/        # UI building blocks (chat, cards, chart, tips)
+    charts/          # SVG charts for dashboard + projections
   constants/         # theme tokens
   services/          # optional API layer (web-safe)
   types/             # shared TypeScript types
-  utils/             # deterministic projection + helpers
+  utils/             # deterministic projections + marketing intelligence calculations
 ```
 
