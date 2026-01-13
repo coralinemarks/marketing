@@ -1,13 +1,16 @@
-# Marketing Plan Analysis (Expo + React Native)
+# Marketing Coach (Marketing Plan Insight App)
 
-Cross-platform (iOS, Android, Web) app built with **Expo + React Native** to help users analyze and improve a company’s marketing plan through a **chat-style flow**.
+Cross-platform (iOS, Android, Web) app built with **Expo + React Native** that feels like a **conversational marketing coach**.
+
+Instead of a static form, you get a guided chat experience with live scoring, animated data, and a “what‑if” sandbox to explore improvements.
 
 ## What you get
 
-- **Company input chat**: capture company name + product/service
-- **Marketing plan question chat**: target audience, channels, budget, goals
-- **Marketing success over time**: simulated projection chart (web-safe via SVG)
-- **Actionable tips**: tailored improvements based on answers
+- **Marketing Coach chat**: one question at a time, with short reactive feedback + typing indicator
+- **Gamification**: live **Marketing Score (0–100)**, confidence meter, progress bar, and badges
+- **Animated chart**: success projection line animates in + annotated moments in the timeline
+- **What‑if mode**: tweak budget/add a channel and see score, chart, and tips update in real time
+- **Save + share**: save plans locally, load/delete them, and copy a shareable text summary
 - **Expo Web + Vercel ready**: static export + `vercel.json`
 
 ## Tech
@@ -15,6 +18,9 @@ Cross-platform (iOS, Android, Web) app built with **Expo + React Native** to hel
 - Expo (SDK 54, latest stable at time of scaffold)
 - React Native + TypeScript
 - Functional components + hooks
+- Animations: `moti` + `react-native-reanimated` (Expo Web compatible)
+- Gradients: `expo-linear-gradient`
+- Storage: `@react-native-async-storage/async-storage` (works on web via RNW)
 - Chart: `react-native-svg` (works on Expo Web)
 
 ## Run locally
