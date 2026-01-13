@@ -22,9 +22,20 @@ import { TypingIndicator } from './src/components/TypingIndicator';
 import { colors, radii, spacing, typography } from './src/constants/theme';
 import type { ChatMessage, MarketingAnswers, MarketingInsights } from './src/types/marketing';
 import { makeId } from './src/utils/id';
-import { calculateConfidence, calculateMarketingScore, channelCount, generateMarketingInsights, looksSmartGoals, looksSpecific, parseBudgetValue } from './src/utils/marketingInsights';
+import {
+  applyScenarioToAnswers,
+  calculateConfidence,
+  calculateMarketingScore,
+  channelCount,
+  generateMarketingInsights,
+  looksSmartGoals,
+  looksSpecific,
+  parseBudgetValue,
+} from './src/utils/marketingInsights';
 import { BadgeChip } from './src/components/BadgeChip';
 import { ScoreCard } from './src/components/ScoreCard';
+import { ScenarioCard } from './src/components/ScenarioCard';
+import type { ScenarioConfig } from './src/types/scenario';
 
 export default function App() {
   const COACH_NAME = 'Marketing Coach';
@@ -93,6 +104,8 @@ export default function App() {
   const [isCoachTyping, setIsCoachTyping] = useState(false);
   const liveScore = useMemo(() => calculateMarketingScore(answers), [answers]);
   const liveConfidence = useMemo(() => calculateConfidence(liveScore), [liveScore]);
+  const [scenario, setScenario] = useState<ScenarioConfig>({ budgetDelta: 0, addChannel: '' });
+  const baseBudgetValue = useMemo(() => parseBudgetValue(answers.budget), [answers.budget]);
 
   const startConversation = useCallback(() => {
     setQuestionIndex(0);
@@ -106,6 +119,7 @@ export default function App() {
     });
     setInsightsState({ status: 'locked' });
     setIsCoachTyping(false);
+    setScenario({ budgetDelta: 0, addChannel: '' });
     setMessages([
       {
         id: makeId('msg'),
@@ -338,6 +352,14 @@ export default function App() {
               subtitle="A simulated projection (0–100) based on your inputs. Use it as directional guidance—not a guarantee."
             />
 
+            <ScenarioCard
+              enabled={insightsState.status === 'ready'}
+              baseBudgetValue={baseBudgetValue}
+              scenario={scenario}
+              onChange={setScenario}
+              onReset={() => setScenario({ budgetDelta: 0, addChannel: '' })}
+            />
+
             {insightsState.status === 'locked' ? (
               <Card>
                 <Text style={styles.muted}>
@@ -356,13 +378,25 @@ export default function App() {
               </Card>
             ) : (
               <>
-                <ScoreCard
-                  score={insightsState.data.score}
-                  confidence={calculateConfidence(insightsState.data.score)}
-                  caption="Your plan gets stronger with tighter audience definition, a focused channel mix, measurable goals, and consistent weekly execution."
-                />
+                {(() => {
+                  const scenarioAnswers = applyScenarioToAnswers(answers, scenario);
+                  const scenarioInsights = generateMarketingInsights(scenarioAnswers);
+                  return (
+                    <>
+                      <ScoreCard
+                        score={scenarioInsights.score}
+                        confidence={calculateConfidence(scenarioInsights.score)}
+                        caption={
+                          scenario.budgetDelta !== 0 || scenario.addChannel.trim().length > 0
+                            ? 'Scenario applied — you’re viewing a “what-if” version of your plan.'
+                            : 'Baseline plan — try What‑if mode to see how tweaks change outcomes.'
+                        }
+                      />
 
-                <LineChart data={insightsState.data.projection} />
+                      <LineChart data={scenarioInsights.projection} />
+                    </>
+                  );
+                })()}
 
                 <View style={{ height: spacing.lg }} />
 
@@ -370,7 +404,11 @@ export default function App() {
                   title="Actionable improvement tips"
                   subtitle="Practical next steps you can execute this week."
                 />
-                <TipsList tips={insightsState.data.tips} />
+                {(() => {
+                  const scenarioAnswers = applyScenarioToAnswers(answers, scenario);
+                  const scenarioInsights = generateMarketingInsights(scenarioAnswers);
+                  return <TipsList tips={scenarioInsights.tips} />;
+                })()}
               </>
             )}
           </View>

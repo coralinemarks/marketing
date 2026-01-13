@@ -83,6 +83,39 @@ export function calculateConfidence(score: number) {
   return clamp(Math.round(45 + score * 0.45), 35, 92);
 }
 
+export function formatBudget(value: number) {
+  const rounded = Math.round(value);
+  if (rounded >= 1000) return `$${(rounded / 1000).toFixed(1).replace(/\.0$/, '')}k/mo`;
+  return `$${rounded}/mo`;
+}
+
+export function applyScenarioToAnswers(
+  answers: MarketingAnswers,
+  scenario: { budgetDelta: number; addChannel: string }
+): MarketingAnswers {
+  const baseBudget = parseBudgetValue(answers.budget) ?? 0;
+  const nextBudget = Math.max(0, baseBudget + (scenario.budgetDelta || 0));
+
+  const channel = scenario.addChannel.trim();
+  const existingChannels = answers.channels
+    .split(/[,\n]/g)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const hasChannel =
+    channel.length > 0 &&
+    existingChannels.some((c) => c.toLowerCase() === channel.toLowerCase());
+
+  const nextChannels =
+    channel.length > 0 && !hasChannel ? [...existingChannels, channel].join(', ') : existingChannels.join(', ');
+
+  return {
+    ...answers,
+    budget: nextBudget > 0 ? formatBudget(nextBudget) : answers.budget,
+    channels: nextChannels,
+  };
+}
+
 function buildTips(a: MarketingAnswers, score: number) {
   const tips: string[] = [];
 
