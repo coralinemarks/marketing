@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "workspace",
-    "slug": "workspace",
+    "name": "Marketing Plan Analysis",
+    "slug": "marketing-plan-analysis",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FBF7F0"
     },
     "ios": {
       "supportsTablet": true
