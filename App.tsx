@@ -40,6 +40,24 @@ import type { SavedPlan } from './src/types/savedPlan';
 import * as Clipboard from 'expo-clipboard';
 import { addSavedPlan, deleteSavedPlan, loadSavedPlans } from './src/services/storage';
 import { SavedPlansCard } from './src/components/SavedPlansCard';
+import { CompanyHeroCard } from './src/components/CompanyHeroCard';
+import { MetricTile } from './src/components/MetricTile';
+import { Slider } from './src/components/Slider';
+import { PieChart } from './src/components/charts/PieChart';
+import { RadialGauge } from './src/components/charts/RadialGauge';
+import { BarCompareChart } from './src/components/charts/BarCompareChart';
+import { ForecastLineChart } from './src/components/charts/ForecastLineChart';
+import { InsightCards } from './src/components/InsightCards';
+import type { BudgetAllocation, Industry, IntelligenceInputs, MarketModel } from './src/types/intelligence';
+import {
+  calculateProfitForecast,
+  formatMoneyCompact,
+  generateInsightCards,
+  inferIndustryFromText,
+  inferModelFromText,
+  normalizeAllocation,
+  setAllocationChannel,
+} from './src/utils/marketingIntelligence';
 
 export default function App() {
   const COACH_NAME = 'Marketing Coach';
@@ -113,6 +131,15 @@ export default function App() {
   const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Marketing Intelligence dashboard state (separate from the coach scenario).
+  const [intelIndustry, setIntelIndustry] = useState<Industry>('Other');
+  const [intelModel, setIntelModel] = useState<MarketModel>('B2C');
+  const [intelMonthlyBudget, setIntelMonthlyBudget] = useState<number>(1500);
+  const [intelGrowthDeltaPct, setIntelGrowthDeltaPct] = useState<number>(0);
+  const [allocation, setAllocation] = useState<BudgetAllocation>(
+    normalizeAllocation({ paidAds: 40, social: 25, email: 15, content: 20 })
+  );
+
   const startConversation = useCallback(() => {
     setQuestionIndex(0);
     setAnswers({
@@ -164,6 +191,13 @@ export default function App() {
       try {
         const data = generateMarketingInsights(answers);
         setInsightsState({ status: 'ready', data });
+
+        // Initialize dashboard defaults deterministically from user inputs.
+        const inferredText = `${answers.productOrService} ${answers.targetAudience}`;
+        setIntelIndustry(inferIndustryFromText(inferredText));
+        setIntelModel(inferModelFromText(inferredText));
+        const b = parseBudgetValue(answers.budget);
+        if (b != null && b > 0) setIntelMonthlyBudget(b);
       } catch (e) {
         setInsightsState({
           status: 'error',
@@ -400,6 +434,30 @@ export default function App() {
                 {(() => {
                   const scenarioAnswers = applyScenarioToAnswers(answers, scenario);
                   const scenarioInsights = generateMarketingInsights(scenarioAnswers);
+                  const audienceSpecificityScore =
+                    answers.targetAudience.trim().length === 0
+                      ? 0.4
+                      : looksSpecific(answers.targetAudience)
+                        ? 1
+                        : 0.65;
+
+                  const intelInput: IntelligenceInputs = {
+                    companyName: answers.companyName || 'Your company',
+                    productOrService: answers.productOrService || 'Product / service',
+                    industry: intelIndustry,
+                    model: intelModel,
+                    monthlyBudget: Math.max(0, intelMonthlyBudget),
+                    allocation,
+                    growthRateDeltaPct: intelGrowthDeltaPct,
+                  };
+
+                  const { market, forecast } = calculateProfitForecast({
+                    input: intelInput,
+                    marketingScore: scenarioInsights.score,
+                    audienceSpecificityScore,
+                  });
+
+                  const insightCards = generateInsightCards({ input: intelInput, market, forecast });
                   return (
                     <>
                       <View style={styles.actionsRow}>
@@ -429,11 +487,20 @@ export default function App() {
                           accessibilityRole="button"
                           onPress={async () => {
                             const summary = [
-                              `Marketing plan summary`,
+                              `Marketing intelligence summary`,
                               `Company: ${answers.companyName || '—'}`,
                               `Product/service: ${answers.productOrService || '—'}`,
-                              `Score: ${scenarioInsights.score}/100`,
-                              `Confidence: ${calculateConfidence(scenarioInsights.score)}%`,
+                              `Marketing score: ${scenarioInsights.score}/100`,
+                              `Coach confidence: ${calculateConfidence(scenarioInsights.score)}%`,
+                              `---`,
+                              `TAM: ${formatMoneyCompact(market.tamAnnualUsd)} / yr`,
+                              `SAM: ${formatMoneyCompact(market.samAnnualUsd)} / yr`,
+                              `Market growth: ${market.growthRateYoYPct}% YoY`,
+                              `---`,
+                              `Annual spend: ${formatMoneyCompact(forecast.annualSpendUsd)}`,
+                              `Annual revenue: ${formatMoneyCompact(forecast.annualRevenueUsd)}`,
+                              `Annual profit: ${formatMoneyCompact(forecast.annualProfitUsd)}`,
+                              `ROI: ${forecast.roiPct.toFixed(0)}%`,
                               ``,
                               `Top tips:`,
                               ...scenarioInsights.tips.slice(0, 5).map((t, i) => `${i + 1}. ${t}`),
@@ -459,6 +526,198 @@ export default function App() {
                       />
 
                       <LineChart data={scenarioInsights.projection} />
+
+                      <View style={{ height: spacing.lg }} />
+
+                      <SectionHeader
+                        title="Marketing intelligence dashboard"
+                        subtitle="Market sizing, budget allocation, and profit forecasting—deterministic and explainable."
+                      />
+
+                      <CompanyHeroCard
+                        companyName={intelInput.companyName}
+                        productOrService={intelInput.productOrService}
+                        industry={intelInput.industry}
+                        model={intelInput.model}
+                      />
+
+                      <Card style={styles.dashboardCard}>
+                        <Text style={styles.dashboardTitle}>Market size & growth</Text>
+                        <View style={styles.grid2}>
+                          <MetricTile
+                            label="TAM (annual)"
+                            value={formatMoneyCompact(market.tamAnnualUsd)}
+                            icon="globe-outline"
+                            color="#7C3AED"
+                            help="Total Addressable Market: the total revenue opportunity if you owned the whole category."
+                          />
+                          <MetricTile
+                            label="SAM (annual)"
+                            value={formatMoneyCompact(market.samAnnualUsd)}
+                            icon="locate-outline"
+                            color="#059669"
+                            help="Serviceable Available Market: the slice of TAM you can realistically reach with your strategy + budget."
+                          />
+                          <MetricTile
+                            label="Growth rate"
+                            value={`${market.growthRateYoYPct}% YoY`}
+                            icon="trending-up-outline"
+                            color="#2563EB"
+                            help="Year-over-year growth: a directional tailwind for how fast demand is expanding."
+                          />
+                          <View style={styles.gaugeTile}>
+                            <RadialGauge
+                              value={market.tamAnnualUsd <= 0 ? 0 : market.samAnnualUsd / market.tamAnnualUsd}
+                              color="#059669"
+                              label="SAM / TAM"
+                              subtitle="Reachable slice of the market"
+                            />
+                          </View>
+                        </View>
+
+                        <View style={{ height: spacing.md }} />
+                        <BarCompareChart
+                          items={[
+                            { label: 'TAM', value: market.tamAnnualUsd, color: '#7C3AED' },
+                            { label: 'SAM', value: market.samAnnualUsd, color: '#059669' },
+                          ]}
+                        />
+                      </Card>
+
+                      <Card style={styles.dashboardCard}>
+                        <Text style={styles.dashboardTitle}>Budget input & allocation</Text>
+                        <View style={styles.budgetRow}>
+                          <View style={{ flex: 1, minWidth: 260 }}>
+                            <Text style={styles.kpiLabel}>Monthly budget</Text>
+                            <Text style={styles.kpiValue}>{formatMoneyCompact(intelMonthlyBudget)}/mo</Text>
+                            <View style={{ marginTop: spacing.sm }}>
+                              <Slider
+                                min={0}
+                                max={20000}
+                                step={250}
+                                value={intelMonthlyBudget}
+                                onChange={(v) => setIntelMonthlyBudget(v)}
+                                color="#2563EB"
+                              />
+                            </View>
+                            <Text style={styles.kpiHint}>Drag to adjust. Updates projections instantly.</Text>
+
+                            <Text style={[styles.kpiLabel, { marginTop: spacing.md }]}>Scenario: market growth</Text>
+                            <Text style={styles.kpiHint}>
+                              Growth adjustment: {intelGrowthDeltaPct > 0 ? '+' : ''}
+                              {intelGrowthDeltaPct}% YoY
+                            </Text>
+                            <Slider
+                              min={-10}
+                              max={20}
+                              step={1}
+                              value={intelGrowthDeltaPct}
+                              onChange={(v) => setIntelGrowthDeltaPct(v)}
+                              color="#7C3AED"
+                            />
+                          </View>
+                          <View style={{ width: 170 }}>
+                            <PieChart
+                              slices={[
+                                { label: 'Paid', value: allocation.paidAds, color: '#2563EB' },
+                                { label: 'Social', value: allocation.social, color: '#7C3AED' },
+                                { label: 'Email', value: allocation.email, color: '#059669' },
+                                { label: 'Content', value: allocation.content, color: '#D97706' },
+                              ]}
+                              centerLabel="Channel mix"
+                            />
+                          </View>
+                        </View>
+
+                        <View style={styles.allocList}>
+                          <AllocRow
+                            label="Paid ads"
+                            color="#2563EB"
+                            value={allocation.paidAds}
+                            onChange={(v) => setAllocation((a) => setAllocationChannel(a, 'paidAds', v))}
+                          />
+                          <AllocRow
+                            label="Social"
+                            color="#7C3AED"
+                            value={allocation.social}
+                            onChange={(v) => setAllocation((a) => setAllocationChannel(a, 'social', v))}
+                          />
+                          <AllocRow
+                            label="Email"
+                            color="#059669"
+                            value={allocation.email}
+                            onChange={(v) => setAllocation((a) => setAllocationChannel(a, 'email', v))}
+                          />
+                          <AllocRow
+                            label="Content"
+                            color="#D97706"
+                            value={allocation.content}
+                            onChange={(v) => setAllocation((a) => setAllocationChannel(a, 'content', v))}
+                          />
+                        </View>
+                      </Card>
+
+                      <Card style={styles.dashboardCard}>
+                        <Text style={styles.dashboardTitle}>Marketing performance & profit forecast</Text>
+                        <View style={styles.grid2}>
+                          <MetricTile
+                            label="Annual revenue"
+                            value={formatMoneyCompact(forecast.annualRevenueUsd)}
+                            icon="cash-outline"
+                            color="#2563EB"
+                            help="Estimated revenue attributed to marketing-acquired customers (based on CAC + revenue per customer assumptions)."
+                          />
+                          <MetricTile
+                            label="Annual profit"
+                            value={formatMoneyCompact(forecast.annualProfitUsd)}
+                            icon={forecast.annualProfitUsd >= 0 ? 'checkmark-circle-outline' : 'warning-outline'}
+                            color={forecast.annualProfitUsd >= 0 ? '#059669' : '#D97706'}
+                            help="Profit after marketing spend: (Revenue × gross margin) − marketing spend."
+                          />
+                          <MetricTile
+                            label="ROI"
+                            value={`${forecast.roiPct.toFixed(0)}%`}
+                            icon="calculator-outline"
+                            color={forecast.roiPct >= 0 ? '#059669' : '#D97706'}
+                            help="ROI = Profit ÷ Spend. Negative ROI means spend is outpacing gross profit."
+                          />
+                          <MetricTile
+                            label="Market share"
+                            value={`${forecast.impliedMarketSharePct.toFixed(2)}%`}
+                            icon="pie-chart-outline"
+                            color="#7C3AED"
+                            help="Estimated share captured within SAM: Revenue ÷ SAM."
+                          />
+                        </View>
+
+                        <View style={{ height: spacing.md }} />
+                        <MetricTile
+                          label="Forecast confidence"
+                          value={`${forecast.confidencePct}%`}
+                          icon="sparkles-outline"
+                          color="#2563EB"
+                          help="A deterministic confidence proxy combining marketing score, channel diversification, and market growth tailwinds."
+                          footer="Use this to compare scenarios, not as a promise."
+                        />
+
+                        <View style={{ height: spacing.md }} />
+                        <ForecastLineChart points={forecast.projection} mode="revenue" />
+                        <View style={{ height: spacing.sm }} />
+                        <ForecastLineChart points={forecast.projection} mode="profit" />
+
+                        <View style={{ height: spacing.md }} />
+                        <Text style={styles.assumptionsTitle}>Assumptions (explainable)</Text>
+                        {forecast.assumptions.map((a, idx) => (
+                          <Text key={idx} style={styles.assumptionLine}>
+                            {idx + 1}. {a}
+                          </Text>
+                        ))}
+                      </Card>
+
+                      <Card style={styles.dashboardCard}>
+                        <Text style={styles.dashboardTitle}>Insight cards</Text>
+                        <InsightCards cards={insightCards} />
+                      </Card>
                     </>
                   );
                 })()}
@@ -656,6 +915,66 @@ const styles = StyleSheet.create({
     fontSize: typography.small,
     fontWeight: '800',
   },
+  dashboardCard: {
+    marginTop: spacing.lg,
+  },
+  dashboardTitle: {
+    fontSize: typography.subtitle,
+    fontWeight: '900',
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  grid2: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  gaugeTile: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  kpiLabel: {
+    fontSize: typography.small,
+    color: colors.mutedText,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  kpiValue: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  kpiHint: {
+    marginTop: spacing.sm,
+    fontSize: typography.small,
+    color: colors.mutedText,
+    lineHeight: typography.small * 1.4,
+  },
+  allocList: {
+    marginTop: spacing.lg,
+    gap: spacing.md,
+  },
+  assumptionsTitle: {
+    fontSize: typography.body,
+    fontWeight: '900',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  assumptionLine: {
+    fontSize: typography.small,
+    color: colors.mutedText,
+    lineHeight: typography.small * 1.45,
+    marginTop: 4,
+  },
   results: {
     marginTop: spacing.sm,
   },
@@ -706,3 +1025,35 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 });
+
+function AllocRow({
+  label,
+  value,
+  onChange,
+  color,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  color: string;
+}) {
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: '900',
+            color: colors.text,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          {label}
+        </Text>
+        <Text style={{ fontSize: 12, fontWeight: '900', color: colors.mutedText }}>{value}%</Text>
+      </View>
+      <Slider min={0} max={100} step={1} value={value} onChange={onChange} color={color} />
+    </View>
+  );
+}
