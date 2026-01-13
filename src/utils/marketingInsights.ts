@@ -5,7 +5,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function parseBudgetValue(budgetRaw: string) {
+export function parseBudgetValue(budgetRaw: string) {
   // Accept inputs like "500", "$500", "500/mo", "2k", "2000 per month"
   const s = budgetRaw.trim().toLowerCase();
   const match = s.match(/([\d,.]+)\s*(k)?/);
@@ -15,7 +15,7 @@ function parseBudgetValue(budgetRaw: string) {
   return match[2] ? num * 1000 : num;
 }
 
-function channelCount(channelsRaw: string) {
+export function channelCount(channelsRaw: string) {
   const parts = channelsRaw
     .split(/[,\n]/g)
     .map((p) => p.trim())
@@ -23,7 +23,7 @@ function channelCount(channelsRaw: string) {
   return parts.length;
 }
 
-function looksSpecific(text: string) {
+export function looksSpecific(text: string) {
   // Very lightweight heuristic: longer + contains concrete qualifiers.
   const t = text.toLowerCase();
   const hasQualifier =
@@ -33,10 +33,54 @@ function looksSpecific(text: string) {
   return text.trim().length >= 25 || hasQualifier;
 }
 
-function looksSmartGoals(text: string) {
+export function looksSmartGoals(text: string) {
   // Tiny heuristic: numbers/timeframes/metrics suggest SMART.
   const t = text.toLowerCase();
   return /(\b\d+\b)|(%|kpi|metric|mrr|arr|leads?|signups?|revenue|weeks?|months?|by\s+\w+)/.test(t);
+}
+
+export function calculateMarketingScore(answers: Partial<MarketingAnswers>) {
+  const targetAudience = answers.targetAudience ?? '';
+  const channelsRaw = answers.channels ?? '';
+  const budgetRaw = answers.budget ?? '';
+  const goalsRaw = answers.goals ?? '';
+
+  const budget = parseBudgetValue(budgetRaw);
+  const channels = channelCount(channelsRaw);
+
+  let score = 40;
+
+  // Audience
+  if (targetAudience.trim().length > 0) score += looksSpecific(targetAudience) ? 12 : -6;
+
+  // Channels
+  if (channelsRaw.trim().length > 0) {
+    if (channels === 0) score -= 10;
+    else if (channels === 1) score -= 4;
+    else if (channels === 2) score += 8;
+    else if (channels === 3) score += 10;
+    else score += 6;
+  }
+
+  // Budget (very rough; marketing is context-dependent)
+  if (budgetRaw.trim().length > 0) {
+    if (budget == null) score -= 2;
+    else if (budget < 300) score -= 6;
+    else if (budget < 1500) score += 6;
+    else if (budget < 4000) score += 10;
+    else score += 12;
+  }
+
+  // Goals
+  if (goalsRaw.trim().length > 0) score += looksSmartGoals(goalsRaw) ? 10 : -4;
+
+  return clamp(Math.round(score), 0, 100);
+}
+
+export function calculateConfidence(score: number) {
+  // Confidence is NOT a guarantee—just an interpretable “how stable is this plan” proxy.
+  // Keep it in a friendly range.
+  return clamp(Math.round(45 + score * 0.45), 35, 92);
 }
 
 function buildTips(a: MarketingAnswers, score: number) {
@@ -135,32 +179,7 @@ function generateProjection(score: number, seedKey: string): MarketingProjection
  * Wrapped by UI with loading/error states.
  */
 export function generateMarketingInsights(answers: MarketingAnswers): MarketingInsights {
-  const budget = parseBudgetValue(answers.budget);
-  const channels = channelCount(answers.channels);
-
-  let score = 40;
-
-  // Audience
-  score += looksSpecific(answers.targetAudience) ? 12 : -6;
-
-  // Channels
-  if (channels === 0) score -= 10;
-  else if (channels === 1) score -= 4;
-  else if (channels === 2) score += 8;
-  else if (channels === 3) score += 10;
-  else score += 6;
-
-  // Budget (very rough; marketing is context-dependent)
-  if (budget == null) score -= 2;
-  else if (budget < 300) score -= 6;
-  else if (budget < 1500) score += 6;
-  else if (budget < 4000) score += 10;
-  else score += 12;
-
-  // Goals
-  score += looksSmartGoals(answers.goals) ? 10 : -4;
-
-  score = clamp(Math.round(score), 0, 100);
+  const score = calculateMarketingScore(answers);
 
   const seedKey = [
     answers.companyName,

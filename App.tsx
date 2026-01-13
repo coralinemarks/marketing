@@ -22,7 +22,9 @@ import { TypingIndicator } from './src/components/TypingIndicator';
 import { colors, radii, spacing, typography } from './src/constants/theme';
 import type { ChatMessage, MarketingAnswers, MarketingInsights } from './src/types/marketing';
 import { makeId } from './src/utils/id';
-import { generateMarketingInsights } from './src/utils/marketingInsights';
+import { calculateConfidence, calculateMarketingScore, channelCount, generateMarketingInsights, looksSmartGoals, looksSpecific, parseBudgetValue } from './src/utils/marketingInsights';
+import { BadgeChip } from './src/components/BadgeChip';
+import { ScoreCard } from './src/components/ScoreCard';
 
 export default function App() {
   const COACH_NAME = 'Marketing Coach';
@@ -89,6 +91,8 @@ export default function App() {
 
   const isComplete = questionIndex >= QUESTIONS.length;
   const [isCoachTyping, setIsCoachTyping] = useState(false);
+  const liveScore = useMemo(() => calculateMarketingScore(answers), [answers]);
+  const liveConfidence = useMemo(() => calculateConfidence(liveScore), [liveScore]);
 
   const startConversation = useCallback(() => {
     setQuestionIndex(0);
@@ -145,6 +149,28 @@ export default function App() {
     const answered = Math.min(questionIndex, total);
     return { total, answered, pct: total === 0 ? 0 : answered / total };
   }, [QUESTIONS.length, questionIndex]);
+
+  const badges = useMemo(() => {
+    const list: Array<{ icon: keyof typeof Ionicons.glyphMap; label: string; tone: 'neutral' | 'good' }> = [];
+    if (answers.targetAudience.trim().length > 0 && looksSpecific(answers.targetAudience)) {
+      list.push({ icon: 'people-outline', label: 'Clear target audience', tone: 'good' });
+    }
+    const c = channelCount(answers.channels);
+    if (answers.channels.trim().length > 0 && c >= 2 && c <= 3) {
+      list.push({ icon: 'megaphone-outline', label: 'Strong channel mix', tone: 'good' });
+    }
+    const b = parseBudgetValue(answers.budget);
+    if (answers.budget.trim().length > 0 && b != null && b >= 1500) {
+      list.push({ icon: 'cash-outline', label: 'Testing budget', tone: 'good' });
+    }
+    if (answers.goals.trim().length > 0 && looksSmartGoals(answers.goals)) {
+      list.push({ icon: 'flag-outline', label: 'Measurable goals', tone: 'good' });
+    }
+    if (liveScore >= 75) {
+      list.push({ icon: 'trending-up-outline', label: 'High growth potential', tone: 'good' });
+    }
+    return list.slice(0, 5);
+  }, [answers.budget, answers.channels, answers.goals, answers.targetAudience, liveScore]);
 
   const makeCoachReaction = useCallback(
     (key: keyof MarketingAnswers, text: string) => {
@@ -278,6 +304,20 @@ export default function App() {
             productOrService={answers.productOrService}
           />
 
+          <ScoreCard
+            score={liveScore}
+            confidence={liveConfidence}
+            caption="This score updates as you answer questions. It’s a directional signal—your execution is what makes it real."
+          />
+
+          {badges.length ? (
+            <View style={styles.badgesRow}>
+              {badges.map((b) => (
+                <BadgeChip key={b.label} icon={b.icon} label={b.label} tone={b.tone} />
+              ))}
+            </View>
+          ) : null}
+
           <Card style={styles.chatCard}>
             <Text style={styles.chatTitle}>Chat</Text>
             <View style={styles.chatTranscript}>
@@ -316,13 +356,11 @@ export default function App() {
               </Card>
             ) : (
               <>
-                <Card style={styles.scoreCard}>
-                  <Text style={styles.scoreLabel}>Projected success score</Text>
-                  <Text style={styles.scoreValue}>{insightsState.data.score}/100</Text>
-                  <Text style={styles.scoreNote}>
-                    Improve the weakest inputs (audience, channels, budget clarity, measurable goals) to raise your score.
-                  </Text>
-                </Card>
+                <ScoreCard
+                  score={insightsState.data.score}
+                  confidence={calculateConfidence(insightsState.data.score)}
+                  caption="Your plan gets stronger with tighter audience definition, a focused channel mix, measurable goals, and consistent weekly execution."
+                />
 
                 <LineChart data={insightsState.data.projection} />
 
@@ -419,6 +457,12 @@ const styles = StyleSheet.create({
   chatTranscript: {
     gap: 0,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
   progressWrap: {
     marginTop: spacing.md,
   },
@@ -469,31 +513,6 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     color: colors.text,
     lineHeight: typography.body * 1.45,
-  },
-  scoreCard: {
-    marginBottom: spacing.md,
-    backgroundColor: colors.primarySoft,
-    borderColor: '#C7DAFF',
-    borderRadius: radii.lg,
-  },
-  scoreLabel: {
-    fontSize: typography.small,
-    color: colors.mutedText,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  scoreValue: {
-    marginTop: spacing.sm,
-    fontSize: 34,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  scoreNote: {
-    marginTop: spacing.sm,
-    fontSize: typography.small,
-    color: colors.mutedText,
-    lineHeight: typography.small * 1.45,
   },
   footerActions: {
     marginTop: spacing.xl,
