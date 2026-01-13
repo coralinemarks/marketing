@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import { colors, radii, spacing, typography } from '../constants/theme';
 import type { MarketingProjectionPoint } from '../types/marketing';
@@ -14,6 +15,8 @@ function pathFromPoints(points: { x: number; y: number }[]) {
   return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(' ')}`;
 }
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
 export function LineChart({
   data,
   height = 180,
@@ -22,6 +25,7 @@ export function LineChart({
   height?: number;
 }) {
   const [width, setWidth] = useState<number>(0);
+  const reveal = useSharedValue(0);
 
   const padding = 18;
   const innerW = Math.max(0, width - padding * 2);
@@ -46,6 +50,31 @@ export function LineChart({
   }, [innerW, innerH, padding, safeData]);
 
   const path = useMemo(() => pathFromPoints(points), [points]);
+
+  // Approximate path length so we can animate strokeDashoffset.
+  const pathLength = useMemo(() => {
+    if (points.length <= 1) return 1;
+    let len = 0;
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      len += Math.sqrt(dx * dx + dy * dy);
+    }
+    return Math.max(1, len);
+  }, [points]);
+
+  useEffect(() => {
+    // Restart animation whenever data/path changes.
+    reveal.value = 0;
+    reveal.value = withTiming(1, { duration: 750 });
+  }, [path, reveal]);
+
+  const animatedProps = useAnimatedProps(() => {
+    // Draw from left to right.
+    return {
+      strokeDashoffset: pathLength * (1 - reveal.value),
+    } as any;
+  }, [pathLength]);
 
   const grid = [0, 25, 50, 75, 100];
 
@@ -77,7 +106,14 @@ export function LineChart({
           })}
 
           {/* line */}
-          <Path d={path} stroke={colors.primary} strokeWidth={3} fill="none" />
+          <AnimatedPath
+            d={path}
+            stroke={colors.primary}
+            strokeWidth={3}
+            fill="none"
+            strokeDasharray={`${pathLength} ${pathLength}`}
+            animatedProps={animatedProps}
+          />
 
           {/* markers */}
           {points.map((p, idx) => (
@@ -98,6 +134,26 @@ export function LineChart({
               >
                 {p.label}
               </SvgText>
+            ))}
+
+          {/* annotations (show the first couple that exist, to keep it readable) */}
+          {safeData
+            .map((d, i) => ({ d, p: points[i] }))
+            .filter((x) => x.d?.note && x.p)
+            .slice(0, 2)
+            .map(({ d, p }, idx) => (
+              <React.Fragment key={`${d.label}_note_${idx}`}>
+                <Circle cx={p.x} cy={p.y} r={7} fill="rgba(29, 78, 216, 0.14)" />
+                <SvgText
+                  x={clamp(p.x + 8, padding, width - padding)}
+                  y={clamp(p.y - 10, padding + 10, height - padding)}
+                  fontSize={11}
+                  fill={colors.mutedText}
+                  textAnchor="start"
+                >
+                  {d.note}
+                </SvgText>
+              </React.Fragment>
             ))}
         </Svg>
       )}

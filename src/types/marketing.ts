@@ -29,6 +29,7 @@ export type MarketingQuestionKey = Exclude<
 export type MarketingProjectionPoint = {
   label: string; // e.g. "M1"
   value: number; // 0..100
+  note?: string; // optional annotation for a moment in the timeline
 };
 
 export type MarketingInsights = {

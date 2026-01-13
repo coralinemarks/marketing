@@ -171,6 +171,14 @@ function generateProjection(score: number, seedKey: string): MarketingProjection
     const v = clamp(base + noise, 0, 100);
     points.push({ label: `M${i}`, value: Math.round(v) });
   }
+
+  // Add a few friendly annotations to “tell a story”.
+  if (points.length >= 12) {
+    points[1].note = 'Early testing phase';
+    points[Math.floor(points.length / 2)].note = 'Iteration compound effect';
+    points[points.length - 2].note = 'Scaling what works';
+  }
+
   return points;
 }
 
