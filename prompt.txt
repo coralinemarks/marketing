@@ -1,0 +1,116 @@
+📱 Cursor Prompt: Marketing Plan Analysis Mobile App (Expo + React Native)
+App Overview
+
+Build a cross-platform native mobile app using Expo + React Native that helps users analyze and improve a company’s marketing plan.
+
+The app allows users to enter their company name and product or service through a chat-style interface. After answering guided questions about their marketing strategy, the app displays three main sections:
+
+A company overview showing the company name and product or service
+
+A data visualization showing how successful the marketing plan would be over time
+
+Actionable tips on how to improve and execute the marketing plan
+
+The app must work on iOS, Android, and Web (Expo Web) and be deployable on Vercel.
+
+Requirements
+
+Use Expo (latest stable) with React Native
+
+Use TypeScript
+
+Use functional components and React Hooks
+
+Mobile-first design with web compatibility
+
+Chat-style user input for data collection
+
+Chart visualization compatible with Expo Web
+
+Handle loading, empty, and error states gracefully
+
+Features
+
+Company Input Chat
+
+Users enter company name and product or service
+
+Submitted information is displayed at the top of the app
+
+Marketing Plan Question Chat
+
+Users must answer questions about their marketing plan (target audience, channels, budget, goals)
+
+Completion of questions unlocks the data and tips sections
+
+Marketing Success Data Section
+
+Displays a chart showing projected marketing success over time
+
+Data may be simulated or generated based on user responses
+
+Marketing Improvement Tips Section
+
+Provides tailored tips to improve and execute the marketing plan
+
+Clear, actionable, and easy-to-read format
+
+API (If Needed)
+
+External API usage is optional
+
+If used, API calls should:
+
+Be isolated in a services/api.ts file
+
+Use environment variables for configuration
+
+Support generating marketing insights or simulated performance data
+
+API implementation must be compatible with Expo Web and Vercel
+
+Styling
+
+White / cream background color scheme
+
+Clean, modern, professional UI
+
+Rounded cards and chat bubbles
+
+Soft shadows and consistent spacing
+
+Accessible typography and readable font sizes
+
+Deployment Readiness
+
+Fully compatible with Expo Web
+
+No native-only APIs that break web builds
+
+Environment variables compatible with Vercel
+
+Include instructions for:
+
+Running locally with Expo
+
+Building for web
+
+Deploying to Vercel
+
+Output
+
+Generate a complete, functional Expo + React Native app including:
+
+Project structure and configuration
+
+All screens and components
+
+Chat logic and state handling
+
+Chart visualization logic
+
+Styling constants
+
+Inline code comments
+
+A README.md with setup and deployment instructions
